@@ -1,7 +1,7 @@
 # PhotoWaterMark CLI工具产品需求文档(PRD)
 
 ## 1. 概述
-PhotoWaterMark是一个Java命令行应用程序，用于根据图像的EXIF元数据向图片添加文本水印。该工具从图像EXIF数据中提取拍摄日期，并将其作为水印添加到图像上。
+PhotoWaterMark是一个Python命令行应用程序，用于根据图像的EXIF元数据向图片添加文本水印。该工具从图像EXIF数据中提取拍摄日期，并将其作为水印添加到图像上。
 
 ## 2. 功能特性
 
@@ -46,7 +46,7 @@ PhotoWaterMark是一个Java命令行应用程序，用于根据图像的EXIF元�
 ## 4. 用户界面
 命令行界面，语法如下:
 ```
-java -jar photowatermark.jar [目录路径] [选项参数]
+python photowatermark.py [目录路径] [选项参数]
 
 选项参数:
   --font-size <大小>     水印字体大小 (默认值: 24)
@@ -62,6 +62,6 @@ java -jar photowatermark.jar [目录路径] [选项参数]
 - 图像处理时内存不足
 
 ## 6. 依赖项
-- Java 8 或更高版本
+- Python 3.6 或更高版本
 - 图像处理库 (待定)
 - EXIF元数据提取库 (待定)

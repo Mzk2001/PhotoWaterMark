@@ -1,0 +1,2 @@
+Pillow>=8.0.0
+exifread>=2.3.0
