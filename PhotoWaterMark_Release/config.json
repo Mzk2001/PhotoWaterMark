@@ -1,0 +1,19 @@
+{
+  "templates": {
+    "test": {
+      "name": "test",
+      "settings": {
+        "watermark_text": "水印文本",
+        "font_size": 24,
+        "font_color": "black",
+        "transparency": 100,
+        "rotation": 0,
+        "position": "top"
+      },
+      "created": "2025-09-24T19:05:47.163304",
+      "last_used": "2025-09-24T19:14:50.468964"
+    }
+  },
+  "last_template": "test",
+  "window_geometry": null
+}

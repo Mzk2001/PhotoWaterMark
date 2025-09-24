@@ -1,0 +1,32 @@
+{
+  "templates": {
+    "test": {
+      "name": "test",
+      "settings": {
+        "watermark_text": "水印文本",
+        "font_size": 24,
+        "font_color": "#e1031e",
+        "transparency": 100,
+        "rotation": 0,
+        "position": "center"
+      },
+      "created": "2025-09-24T18:54:29.959762",
+      "last_used": "2025-09-24T18:54:29.959762"
+    },
+    "测试模板": {
+      "name": "测试模板",
+      "settings": {
+        "watermark_text": "测试模板水印",
+        "font_size": 36,
+        "font_color": "red",
+        "transparency": 80,
+        "rotation": 45,
+        "position": "topLeft"
+      },
+      "created": "2025-09-24T18:47:08.042836",
+      "last_used": "2025-09-24T18:53:42.846103"
+    }
+  },
+  "last_template": "test",
+  "window_geometry": null
+}

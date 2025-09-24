@@ -38,14 +38,42 @@ class WatermarkHandler:
                 txt_layer = Image.new('RGBA', img.size, (255, 255, 255, 0))
                 draw = ImageDraw.Draw(txt_layer)
 
-                # 尝试使用默认字体，如果失败则使用默认字体
-                try:
-                    font = ImageFont.truetype("arial.ttf", font_size)
-                except:
+                # 尝试使用支持中文的字体
+                font_names = [
+                    "simhei.ttf",      # 黑体
+                    "simsun.ttc",      # 宋体
+                    "msyh.ttc",        # 微软雅黑
+                    "simkai.ttf",      # 楷体
+                    "fangsong.ttf",    # 仿宋
+                    "arial.ttf",
+                    "DejaVuSans.ttf"
+                ]
+
+                font = None
+                for font_name in font_names:
                     try:
-                        font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+                        font = ImageFont.truetype(font_name, font_size)
+                        break
                     except:
-                        font = ImageFont.load_default()
+                        continue
+
+                # 如果所有字体都失败，使用默认字体
+                if font is None:
+                    font = ImageFont.load_default()
+                    # 如果默认字体也不支持中文，尝试使用系统字体
+                    try:
+                        # Windows系统字体
+                        font = ImageFont.truetype("C:/Windows/Fonts/simhei.ttf", font_size)
+                    except:
+                        try:
+                            # macOS系统字体
+                            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+                        except:
+                            try:
+                                # Linux系统字体
+                                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+                            except:
+                                pass
 
                 # 获取文本尺寸
                 bbox = draw.textbbox((0, 0), watermark_text, font=font)
@@ -104,7 +132,7 @@ class WatermarkHandler:
                 if rotation != 0:
                     # 创建一个新的图层用于旋转
                     rotated_layer = Image.new('RGBA', img.size, (255, 255, 255, 0))
-                    rotated_watermark = txt_layer.rotate(rotation, expand=0, center=(x + text_width//2, y + text_height//2))
+                    rotated_watermark = txt_layer.rotate(rotation, expand=1)
                     rotated_layer.paste(rotated_watermark, (0, 0), rotated_watermark)
                     txt_layer = rotated_layer
 

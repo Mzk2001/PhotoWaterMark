@@ -7,9 +7,17 @@ PhotoWaterMark - 桌面版图片水印工具
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 import os
 import sys
+
+# 导入拖拽支持
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    DND_SUPPORTED = True
+except ImportError:
+    DND_SUPPORTED = False
+    print("tkinterdnd2未安装，拖拽功能不可用")
 
 # 导入水印处理器和配置管理器
 from watermark_handler import WatermarkHandler
@@ -22,6 +30,11 @@ class PhotoWaterMarkApp:
         self.root.geometry("1200x800")
         self.root.minsize(800, 600)
 
+        # 如果支持拖拽，注册拖拽事件
+        if DND_SUPPORTED:
+            self.root.drop_target_register(DND_FILES)
+            self.root.dnd_bind('<<Drop>>', self.on_drop_files)
+
         # 存储导入的图片路径
         self.image_paths = []
         self.current_image_index = -1
@@ -32,12 +45,20 @@ class PhotoWaterMarkApp:
         self.font_color = tk.StringVar(value="black")
         self.transparency = tk.IntVar(value=100)
         self.rotation = tk.IntVar(value=0)
+        self.selected_position = tk.StringVar(value="bottomRight")  # 默认位置为右下角
+
+        # 位置模式管理（简单明确的方式）
+        self.position_mode = "grid"  # "grid" 或 "manual"
+        self.grid_position = "bottomRight"  # 九宫格位置
+        self.manual_x = 0  # 手动X位置
+        self.manual_y = 0  # 手动Y位置
 
         # 导出设置
         self.output_directory = tk.StringVar()
         self.output_format = tk.StringVar(value="JPEG")
-        self.naming_prefix = tk.StringVar()
-        self.naming_suffix = tk.StringVar(value="_watermarked")
+        self.naming_rule = tk.StringVar(value="")  # 命名规则选择：""=保留原名, "prefix"=添加前缀, "suffix"=添加后缀
+        self.naming_prefix = tk.StringVar()  # 前缀文本
+        self.naming_suffix = tk.StringVar(value="_watermarked")  # 后缀文本
         self.allow_overwrite = tk.BooleanVar(value=False)
 
         # 当前模板
@@ -131,21 +152,29 @@ class PhotoWaterMarkApp:
         list_frame = ttk.Frame(self.left_panel)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # 创建列表框和滚动条
-        self.image_listbox = tk.Listbox(list_frame)
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.image_listbox.yview)
-        self.image_listbox.configure(yscrollcommand=scrollbar.set)
+        # 创建Treeview和滚动条用于显示带缩略图的图片列表
+        self.image_tree = ttk.Treeview(list_frame, columns=("name",), show="tree")
+        self.image_tree.column("#0", width=50, stretch=tk.NO)  # 第一列用于显示缩略图
+        self.image_tree.column("name", width=150, stretch=tk.YES)
 
-        self.image_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.image_tree.yview)
+        self.image_tree.configure(yscrollcommand=scrollbar.set)
+
+        self.image_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # 绑定列表框选择事件
-        self.image_listbox.bind('<<ListboxSelect>>', self.on_image_select)
+        # 绑定Treeview选择事件
+        self.image_tree.bind('<<TreeviewSelect>>', self.on_image_select_tree)
+
+        # 添加拖拽文件处理方法
+        # 注意：由于tkinter本身不支持文件拖拽，这里提供一个备用方案
+        # 可以通过安装tkinterdnd2库来启用真正的拖拽功能
 
         # 操作按钮
         button_frame = ttk.Frame(self.left_panel)
         button_frame.pack(fill=tk.X, padx=5, pady=5)
 
+        ttk.Button(button_frame, text="导入单个文件", command=self.import_single_file).pack(side=tk.LEFT, padx=2)
         ttk.Button(button_frame, text="移除选中", command=self.remove_selected).pack(side=tk.LEFT, padx=2)
         ttk.Button(button_frame, text="清空所有", command=self.clear_all).pack(side=tk.LEFT, padx=2)
 
@@ -155,6 +184,17 @@ class PhotoWaterMarkApp:
         if selection:
             index = selection[0]
             self.show_image(index)
+
+    def on_image_select_tree(self, event):
+        """Treeview图片选择事件处理"""
+        selection = self.image_tree.selection()
+        if selection:
+            # 获取选中项的索引
+            item_id = selection[0]
+            children = self.image_tree.get_children()
+            index = children.index(item_id) if item_id in children else -1
+            if index >= 0:
+                self.show_image(index)
 
     def create_middle_panel(self, parent):
         """创建中间面板"""
@@ -218,6 +258,7 @@ class PhotoWaterMarkApp:
         font_size_scale = ttk.Scale(self.watermark_frame, from_=8, to=72, variable=self.font_size, orient=tk.HORIZONTAL)
         font_size_scale.grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
         font_size_scale.bind('<ButtonRelease-1>', self.on_watermark_setting_change)
+        font_size_scale.bind('<Motion>', self.on_watermark_setting_change)
         ttk.Label(self.watermark_frame, textvariable=self.font_size).grid(row=1, column=2, padx=5, pady=5)
 
         # 字体颜色
@@ -236,6 +277,7 @@ class PhotoWaterMarkApp:
         transparency_scale = ttk.Scale(self.watermark_frame, from_=0, to=100, variable=self.transparency, orient=tk.HORIZONTAL)
         transparency_scale.grid(row=3, column=1, sticky=tk.EW, padx=5, pady=5)
         transparency_scale.bind('<ButtonRelease-1>', self.on_watermark_setting_change)
+        transparency_scale.bind('<Motion>', self.on_watermark_setting_change)
         ttk.Label(self.watermark_frame, textvariable=self.transparency).grid(row=3, column=2, padx=5, pady=5)
 
         # 旋转角度
@@ -243,6 +285,7 @@ class PhotoWaterMarkApp:
         rotation_scale = ttk.Scale(self.watermark_frame, from_=-180, to=180, variable=self.rotation, orient=tk.HORIZONTAL)
         rotation_scale.grid(row=4, column=1, sticky=tk.EW, padx=5, pady=5)
         rotation_scale.bind('<ButtonRelease-1>', self.on_watermark_setting_change)
+        rotation_scale.bind('<Motion>', self.on_watermark_setting_change)
         ttk.Label(self.watermark_frame, textvariable=self.rotation).grid(row=4, column=2, padx=5, pady=5)
 
     def create_position_settings(self):
@@ -254,30 +297,58 @@ class PhotoWaterMarkApp:
             ("↙", "bottomLeft"), ("↓", "bottom"), ("↘", "bottomRight")
         ]
 
-        # 当前选中的位置
-        self.selected_position = tk.StringVar(value="bottomRight")
+        # 当前选中的位置（已在第35行定义）
+        pass
 
+        # 清除之前的位置按钮
+        for widget in self.position_frame.winfo_children():
+            if isinstance(widget, ttk.Button):
+                widget.destroy()
+
+        # 创建位置按钮并保存引用
+        self.position_buttons = {}
         for i, (text, pos) in enumerate(positions):
             row, col = divmod(i, 3)
+            # 修复lambda闭包问题，使用默认参数确保捕获正确的pos值
             btn = ttk.Button(self.position_frame, text=text, width=5,
-                           command=lambda p=pos: self.set_watermark_position(p))
+                           command=lambda pos=pos: self.set_watermark_position(pos))
             btn.grid(row=row, column=col, padx=2, pady=2)
+            self.position_buttons[pos] = btn
+            print(f"创建九宫格按钮: {text} ({pos})")
 
-            # 为按钮添加样式以显示选中状态
-            if pos == self.selected_position.get():
-                btn.configure(style='Selected.TButton')
+        # 更新选中按钮的样式
+        self.update_position_button_styles()
 
     def set_watermark_position(self, position):
         """设置水印位置"""
+        print(f"=== 按钮点击事件触发! ===")
+        old_mode = self.position_mode
+        old_grid_pos = self.grid_position
         self.selected_position.set(position)
+        self.grid_position = position
+
+        # 切换到九宫格模式
+        self.position_mode = "grid"
+
+        print(f"九宫格位置设置: {old_grid_pos} -> {position}, 模式: {old_mode} -> {self.position_mode}")
         self.status_label.config(text=f"水印位置设置为: {position}")
         self.on_watermark_setting_change(None)
 
         # 更新按钮样式
-        for widget in self.position_frame.winfo_children():
-            if isinstance(widget, ttk.Button):
-                # 这里可以添加样式更新逻辑
-                pass
+        self.update_position_button_styles()
+
+    def update_position_button_styles(self):
+        """更新位置按钮的样式以显示选中状态"""
+        # 检查位置按钮是否已创建
+        if not hasattr(self, 'position_buttons'):
+            return
+
+        selected_pos = self.selected_position.get()
+        for pos, btn in self.position_buttons.items():
+            if pos == selected_pos:
+                btn.configure(style='Selected.TButton')
+            else:
+                btn.configure(style='TButton')  # 恢复默认样式
 
     def create_export_settings(self):
         """创建导出设置界面"""
@@ -297,10 +368,10 @@ class PhotoWaterMarkApp:
 
         # 命名规则
         ttk.Label(self.export_frame, text="命名规则:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
-        ttk.Radiobutton(self.export_frame, text="保留原文件名", variable=self.naming_prefix, value="").grid(row=2, column=1, sticky=tk.W, padx=5, pady=2)
-        ttk.Radiobutton(self.export_frame, text="添加前缀", variable=self.naming_prefix, value="prefix").grid(row=3, column=1, sticky=tk.W, padx=5, pady=2)
-        ttk.Entry(self.export_frame, textvariable=self.naming_prefix, width=15, state="disabled").grid(row=3, column=2, padx=5, pady=2)
-        ttk.Radiobutton(self.export_frame, text="添加后缀", variable=self.naming_prefix, value="suffix").grid(row=4, column=1, sticky=tk.W, padx=5, pady=2)
+        ttk.Radiobutton(self.export_frame, text="保留原文件名", variable=self.naming_rule, value="").grid(row=2, column=1, sticky=tk.W, padx=5, pady=2)
+        ttk.Radiobutton(self.export_frame, text="添加前缀", variable=self.naming_rule, value="prefix").grid(row=3, column=1, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(self.export_frame, textvariable=self.naming_prefix, width=15).grid(row=3, column=2, padx=5, pady=2)
+        ttk.Radiobutton(self.export_frame, text="添加后缀", variable=self.naming_rule, value="suffix").grid(row=4, column=1, sticky=tk.W, padx=5, pady=2)
         ttk.Entry(self.export_frame, textvariable=self.naming_suffix, width=15).grid(row=4, column=2, padx=5, pady=2)
 
         # 覆盖原文件夹警告
@@ -331,11 +402,6 @@ class PhotoWaterMarkApp:
         directory = filedialog.askdirectory(title="选择输出文件夹")
         if directory:
             self.output_directory.set(directory)
-
-    def set_watermark_position(self, position):
-        """设置水印位置"""
-        self.status_label.config(text=f"水印位置设置为: {position}")
-        self.on_watermark_setting_change(None)
 
     def on_watermark_setting_change(self, event):
         """水印设置改变时的事件处理"""
@@ -373,6 +439,23 @@ class PhotoWaterMarkApp:
         if file_paths:
             self.add_images(file_paths)
 
+    def import_single_file(self):
+        """导入单个文件"""
+        file_path = filedialog.askopenfilename(
+            title="选择图片文件",
+            filetypes=[
+                ("图片文件", "*.jpg *.jpeg *.png *.bmp *.tiff *.tif"),
+                ("JPEG文件", "*.jpg *.jpeg"),
+                ("PNG文件", "*.png"),
+                ("BMP文件", "*.bmp"),
+                ("TIFF文件", "*.tiff *.tif"),
+                ("所有文件", "*.*")
+            ]
+        )
+
+        if file_path:
+            self.add_images([file_path])
+
     def import_folder(self):
         """导入文件夹"""
         folder_path = filedialog.askdirectory(title="选择包含图片的文件夹")
@@ -398,14 +481,40 @@ class PhotoWaterMarkApp:
             if path not in self.image_paths:
                 self.image_paths.append(path)
                 filename = os.path.basename(path)
-                self.image_listbox.insert(tk.END, filename)
+
+                # 生成缩略图
+                item_id = None
+                try:
+                    image = Image.open(path)
+                    # 调整图片大小以创建缩略图
+                    image.thumbnail((40, 40), Image.LANCZOS)
+                    # 转换为PhotoImage
+                    photo = ImageTk.PhotoImage(image)
+
+                    # 在Treeview中添加条目
+                    item_id = self.image_tree.insert("", tk.END, text="", values=(filename,))
+
+                    # 配置Treeview项以显示图像
+                    self.image_tree.item(item_id, image=photo)
+
+                    # 存储缩略图引用以防止被垃圾回收
+                    if not hasattr(self, 'thumbnails'):
+                        self.thumbnails = {}
+                    self.thumbnails[item_id] = photo
+
+                except Exception as e:
+                    print(f"无法生成缩略图: {e}")
+                    # 如果无法生成缩略图，仍然添加文件名
+                    item_id = self.image_tree.insert("", tk.END, text="", values=(filename,))
 
         self.status_label.config(text=f"已导入 {len(self.image_paths)} 张图片")
 
         # 如果这是第一张图片，自动选择并显示
         if len(self.image_paths) == 1:
-            self.image_listbox.selection_set(0)
-            self.show_image(0)
+            first_item = self.image_tree.get_children()[0] if self.image_tree.get_children() else None
+            if first_item:
+                self.image_tree.selection_set(first_item)
+                self.show_image(0)
 
     def show_image(self, index):
         """显示指定索引的图片"""
@@ -471,14 +580,48 @@ class PhotoWaterMarkApp:
             # 获取水印文本
             watermark_text = self.watermark_text.get()
 
-            # 尝试使用默认字体，如果失败则使用默认字体
-            try:
-                font = ImageFont.truetype("arial.ttf", self.font_size.get())
-            except:
+            # 尝试使用支持中文的字体
+            font_names = [
+                "simhei.ttf",      # 黑体
+                "simsun.ttc",      # 宋体
+                "msyh.ttc",        # 微软雅黑
+                "simkai.ttf",      # 楷体
+                "fangsong.ttf",    # 仿宋
+                "arial.ttf",
+                "DejaVuSans.ttf"
+            ]
+
+            font = None
+            for font_name in font_names:
                 try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", self.font_size.get())
+                    font = ImageFont.truetype(font_name, self.font_size.get())
+                    print(f"成功加载字体: {font_name}")
+                    break
+                except Exception as e:
+                    print(f"无法加载字体 {font_name}: {e}")
+                    continue
+
+            # 如果所有字体都失败，使用默认字体
+            if font is None:
+                print("使用默认字体")
+                font = ImageFont.load_default()
+                # 如果默认字体也不支持中文，尝试使用系统字体
+                try:
+                    # Windows系统字体
+                    font = ImageFont.truetype("C:/Windows/Fonts/simhei.ttf", self.font_size.get())
+                    print("成功加载Windows系统黑体字体")
                 except:
-                    font = ImageFont.load_default()
+                    try:
+                        # macOS系统字体
+                        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", self.font_size.get())
+                        print("成功加载macOS系统字体")
+                    except:
+                        try:
+                            # Linux系统字体
+                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", self.font_size.get())
+                            print("成功加载Linux系统字体")
+                        except:
+                            print("无法加载任何系统字体，使用PIL默认字体")
 
             # 获取文本尺寸
             bbox = draw.textbbox((0, 0), watermark_text, font=font)
@@ -489,40 +632,18 @@ class PhotoWaterMarkApp:
             img_width, img_height = image.size
             margin = 10
 
-            # 检查是否使用手动拖拽位置
-            if hasattr(self, 'selected_position_x') and hasattr(self, 'selected_position_y'):
-                try:
-                    x = int(self.selected_position_x.get())
-                    y = int(self.selected_position_y.get())
-                    # 确保位置在图像范围内
-                    x = max(0, min(x, img_width - text_width))
-                    y = max(0, min(y, img_height - text_height))
-                except:
-                    # 如果转换失败，使用预设位置
-                    position = self.selected_position.get()  # 使用选中的位置
-                    if position == 'topLeft':
-                        x, y = margin, margin
-                    elif position == 'top':
-                        x, y = (img_width - text_width) // 2, margin
-                    elif position == 'topRight':
-                        x, y = img_width - text_width - margin, margin
-                    elif position == 'left':
-                        x, y = margin, (img_height - text_height) // 2
-                    elif position == 'center':
-                        x, y = (img_width - text_width) // 2, (img_height - text_height) // 2
-                    elif position == 'right':
-                        x, y = img_width - text_width - margin, (img_height - text_height) // 2
-                    elif position == 'bottomLeft':
-                        x, y = margin, img_height - text_height - margin
-                    elif position == 'bottom':
-                        x, y = (img_width - text_width) // 2, img_height - text_height - margin
-                    elif position == 'bottomRight':
-                        x, y = img_width - text_width - margin, img_height - text_height - margin
-                    else:
-                        x, y = img_width - text_width - margin, img_height - text_height - margin
+            # 根据模式选择位置
+            if self.position_mode == "manual":
+                # 使用手动位置
+                x = self.manual_x
+                y = self.manual_y
+                # 确保位置在图像范围内
+                x = max(0, min(x, img_width - text_width))
+                y = max(0, min(y, img_height - text_height))
+                print(f"使用手动位置: ({x}, {y}), 原始: ({self.manual_x}, {self.manual_y})")
             else:
-                # 使用预设位置
-                position = self.selected_position.get()  # 使用选中的位置
+                # 使用九宫格位置
+                position = self.grid_position
                 if position == 'topLeft':
                     x, y = margin, margin
                 elif position == 'top':
@@ -543,6 +664,7 @@ class PhotoWaterMarkApp:
                     x, y = img_width - text_width - margin, img_height - text_height - margin
                 else:
                     x, y = img_width - text_width - margin, img_height - text_height - margin
+                print(f"使用九宫格位置: {position} -> ({x}, {y})")
 
             # 调整透明度
             alpha = int(255 * self.transparency.get() / 100)
@@ -568,6 +690,16 @@ class PhotoWaterMarkApp:
             # 绘制水印
             draw.text((x, y), watermark_text, font=font, fill=(*color, alpha))
 
+            # 如果有旋转，应用旋转（仅在预览中简单实现）
+            rotation = self.rotation.get()
+            if rotation != 0:
+                # 对于预览，我们简化旋转实现
+                # 创建一个新的图层用于旋转
+                rotated_layer = Image.new('RGBA', image.size, (255, 255, 255, 0))
+                rotated_watermark = txt_layer.rotate(rotation, expand=1)
+                rotated_layer.paste(rotated_watermark, (0, 0), rotated_watermark)
+                txt_layer = rotated_layer
+
             # 合并图像和水印图层
             watermarked = Image.alpha_composite(image, txt_layer)
 
@@ -579,11 +711,23 @@ class PhotoWaterMarkApp:
 
     def remove_selected(self):
         """移除选中的图片"""
-        selection = self.image_listbox.curselection()
+        selection = self.image_tree.selection()
         if selection:
-            for index in reversed(selection):
-                self.image_listbox.delete(index)
+            # 获取选中项的索引
+            children = self.image_tree.get_children()
+            indices = [children.index(item) for item in selection if item in children]
+            indices.sort(reverse=True)  # 从后往前删除，避免索引变化
+
+            for index in indices:
+                # 删除Treeview中的项
+                item_id = children[index]
+                self.image_tree.delete(item_id)
+                # 删除对应的图片路径
                 del self.image_paths[index]
+                # 删除缩略图引用
+                if hasattr(self, 'thumbnails') and item_id in self.thumbnails:
+                    del self.thumbnails[item_id]
+
             self.status_label.config(text=f"已移除选中的图片，剩余 {len(self.image_paths)} 张")
 
     def clear_all(self):
@@ -591,7 +735,12 @@ class PhotoWaterMarkApp:
         if self.image_paths:
             if messagebox.askyesno("确认", "确定要清空所有图片吗？"):
                 self.image_paths.clear()
-                self.image_listbox.delete(0, tk.END)
+                # 清空Treeview
+                for item in self.image_tree.get_children():
+                    self.image_tree.delete(item)
+                # 清空缩略图引用
+                if hasattr(self, 'thumbnails'):
+                    self.thumbnails.clear()
                 self.status_label.config(text="已清空所有图片")
 
     def zoom_in(self):
@@ -610,8 +759,35 @@ class PhotoWaterMarkApp:
         """实际大小"""
         self.status_label.config(text="显示实际大小")
 
+    def on_drop_files(self, event):
+        """处理拖拽文件事件"""
+        if DND_SUPPORTED:
+            # 获取拖拽的文件路径
+            files = event.data.split()
+            if files:
+                # 过滤出图片文件
+                image_files = []
+                supported_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+
+                for file_path in files:
+                    # 移除可能的花括号
+                    if file_path.startswith('{') and file_path.endswith('}'):
+                        file_path = file_path[1:-1]
+
+                    # 检查文件扩展名
+                    _, ext = os.path.splitext(file_path)
+                    if ext.lower() in supported_extensions:
+                        image_files.append(file_path)
+
+                if image_files:
+                    self.add_images(image_files)
+                    self.status_label.config(text=f"通过拖拽导入了 {len(image_files)} 张图片")
+                else:
+                    self.status_label.config(text="拖拽的文件中没有支持的图片格式")
+
     def on_canvas_click(self, event):
         """画布点击事件处理"""
+        print(f"画布点击事件: x={event.x}, y={event.y}")
         # 记录点击位置
         self.drag_start_x = event.x
         self.drag_start_y = event.y
@@ -626,17 +802,14 @@ class PhotoWaterMarkApp:
         self.drag_start_x = event.x
         self.drag_start_y = event.y
 
-        # 更新水印位置
-        current_x = int(self.selected_position_x.get()) if hasattr(self, 'selected_position_x') else 0
-        current_y = int(self.selected_position_y.get()) if hasattr(self, 'selected_position_y') else 0
+        # 更新手动位置
+        self.manual_x += dx
+        self.manual_y += dy
 
-        # 更新位置变量
-        if not hasattr(self, 'selected_position_x'):
-            self.selected_position_x = tk.StringVar(value=str(current_x))
-            self.selected_position_y = tk.StringVar(value=str(current_y))
-
-        self.selected_position_x.set(str(current_x + dx))
-        self.selected_position_y.set(str(current_y + dy))
+        # 切换到手动模式
+        old_mode = self.position_mode
+        self.position_mode = "manual"
+        print(f"拖拽: ({dx}, {dy}) -> 手动位置 ({self.manual_x}, {self.manual_y}), 模式: {old_mode} -> {self.position_mode}")
 
         # 更新预览
         self.on_watermark_setting_change(None)
@@ -779,6 +952,14 @@ class PhotoWaterMarkApp:
             self.rotation.set(settings["rotation"])
         if "position" in settings:
             self.selected_position.set(settings["position"])
+            # 同时更新grid_position以确保位置正确应用
+            self.grid_position = settings["position"]
+            # 确保位置模式为网格模式
+            self.position_mode = "grid"
+
+        # 更新按钮样式（确保按钮已创建）
+        if hasattr(self, 'position_buttons') and self.position_buttons:
+            self.update_position_button_styles()
 
         # 更新预览
         self.on_watermark_setting_change(None)
@@ -831,10 +1012,13 @@ class PhotoWaterMarkApp:
                 name, ext = os.path.splitext(filename)
 
                 # 根据命名规则生成新文件名
-                if self.naming_prefix.get() == "prefix":
-                    new_name = f"{self.naming_prefix.get()}_{name}"
-                elif self.naming_prefix.get() == "suffix":
-                    new_name = f"{name}{self.naming_suffix.get()}"
+                naming_rule = self.naming_rule.get()
+                if naming_rule == "prefix":
+                    prefix = self.naming_prefix.get()
+                    new_name = f"{prefix}_{name}" if prefix else name
+                elif naming_rule == "suffix":
+                    suffix = self.naming_suffix.get()
+                    new_name = f"{name}{suffix}" if suffix else name
                 else:
                     new_name = name  # 保留原文件名
 
@@ -897,7 +1081,12 @@ class PhotoWaterMarkApp:
         self.root.bind('<Control-Q>', lambda e: self.root.quit())
 
 def main():
-    root = tk.Tk()
+    # 如果支持拖拽，使用TkinterDnD创建根窗口
+    if DND_SUPPORTED:
+        root = TkinterDnD.Tk()
+    else:
+        root = tk.Tk()
+
     app = PhotoWaterMarkApp(root)
     root.mainloop()
 
