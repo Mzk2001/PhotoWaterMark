@@ -21,7 +21,7 @@
 
 ### 方法1：使用预编译的可执行文件（推荐）
 
-1. 从 [Releases](https://github.com/your-username/PhotoWaterMark/releases) 页面下载最新版本的 `photowatermark_gui.exe`
+1. 从 [Releases](https://github.com/Mzk2001/PhotoWaterMark/releases) 页面下载最新版本的 `photowatermark_gui.exe`
 2. 双击运行即可使用
 
 ### 方法2：从源码运行
