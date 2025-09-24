@@ -1,57 +1,129 @@
-# PhotoWaterMark
+# PhotoWaterMark 桌面版
 
-一个Python命令行工具，用于根据图像EXIF元数据向图片添加拍摄日期水印。
+一个基于Python的桌面应用程序，用于向图片添加自定义文本水印。
 
 ## 功能特性
-- 读取指定目录下的图像文件
-- 从EXIF元数据中提取拍摄日期
-- 添加包含拍摄日期的文本水印(格式为YYYY-MM-DD)
-- 将添加水印的图像保存到新的子目录中
-- 支持自定义字体大小、颜色和水印位置
 
-## 技术栈
-- Python 3.6+
-- Pillow (用于图像处理)
-- exifread (用于EXIF元数据提取)
+- **图形用户界面**: 直观易用的桌面应用程序
+- **批量处理**: 支持单张图片或批量导入图片
+- **自定义水印**: 可自定义水印文本、字体、颜色、透明度和旋转角度
+- **位置设置**: 提供九宫格预设位置和手动拖拽定位
+- **实时预览**: 所有设置更改都会实时显示在预览窗口中
+- **导出选项**: 支持JPEG和PNG格式导出，可自定义命名规则
+- **模板管理**: 可保存、加载和管理水印设置模板
 
-## 项目结构
+## 系统要求
+
+- Windows 7 或更高版本
+- Python 3.6 或更高版本（如需从源码运行）
+
+## 安装
+
+### 方法1：使用预编译的可执行文件（推荐）
+
+1. 从 [Releases](https://github.com/your-username/PhotoWaterMark/releases) 页面下载最新版本的 `photowatermark_gui.exe`
+2. 双击运行即可使用
+
+### 方法2：从源码运行
+
+1. 克隆或下载此仓库
+2. 安装依赖：
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. 运行应用：
+   ```bash
+   python src/photowatermark_gui.py
+   ```
+
+## 使用说明
+
+### 1. 导入图片
+
+- 点击工具栏上的"导入图片"按钮或使用菜单"文件" -> "导入图片"来选择单张或多张图片
+- 点击工具栏上的"导入文件夹"按钮或使用菜单"文件" -> "导入文件夹"来导入整个文件夹中的图片
+
+### 2. 设置水印
+
+在右侧面板中设置水印参数：
+
+#### 水印设置
+- **水印文本**: 输入要添加到图片上的文本
+- **字体大小**: 使用滑块调整字体大小（8-72）
+- **字体颜色**: 输入颜色值或点击"选择"按钮选择颜色
+- **透明度**: 使用滑块调整水印透明度（0-100%）
+- **旋转角度**: 使用滑块调整水印旋转角度（-180°到180°）
+
+#### 位置设置
+- 使用九宫格按钮快速将水印定位到预设位置
+- 在预览窗口中直接拖拽水印到任意位置
+
+### 3. 预览效果
+
+- 在中间的预览窗口中查看水印效果
+- 点击左侧图片列表中的不同图片可切换预览
+
+### 4. 导出图片
+
+1. 点击工具栏上的"导出图片"按钮
+2. 选择输出文件夹
+3. 设置导出选项：
+   - 输出格式：选择JPEG或PNG
+   - 命名规则：保留原文件名、添加前缀或添加后缀
+4. 点击"确定"开始导出
+
+### 5. 模板管理
+
+- **保存模板**: 点击"保存模板"按钮将当前设置保存为模板
+- **加载模板**: 点击"加载模板"按钮从已保存的模板中选择并应用
+- **管理模板**: 点击"管理模板"按钮打开模板管理窗口，可查看、加载、删除和重命名模板
+
+## 快捷键
+
+- `Ctrl+O`: 导入图片
+- `Ctrl+Shift+O`: 导入文件夹
+- `Ctrl+S`: 保存模板
+- `Ctrl+Q`: 退出应用
+
+## 开发
+
+### 项目结构
+
 ```
 PhotoWaterMark/
 ├── src/
-│   ├── photowatermark.py      (主程序)
-│   ├── command_line_parser.py  (命令行参数解析)
-│   ├── exif_extractor.py       (EXIF元数据提取)
-│   ├── image_processor.py      (图像处理)
-│   └── watermark_processor.py  (水印处理)
-├── tests/
-│   └── test_photowatermark.py (测试文件)
-├── requirements.txt            (Python依赖包列表)
-└── README.md
+│   ├── photowatermark_gui.py    # 主GUI应用
+│   ├── watermark_handler.py      # 水印处理核心
+│   ├── config_manager.py         # 配置管理器
+├── requirements.txt              # Python依赖包列表
+├── README.md                     # 本文件
+└── PRD.md                        # 产品需求文档
 ```
 
-## 安装依赖
+### 构建可执行文件
+
 ```bash
-pip install -r requirements.txt
+pip install pyinstaller
+pyinstaller --onefile --windowed src/photowatermark_gui.py
 ```
 
-## 使用方法
-```bash
-python src/photowatermark.py [目录路径] [选项参数]
+生成的可执行文件位于 `dist/` 目录中。
 
-选项参数:
-  --font-size <大小>     水印字体大小 (默认值: 24)
-  --font-color <颜色>    水印字体颜色 (默认值: black)
-  --position <位置>      水印位置: topLeft, center, bottomRight (默认值: bottomRight)
-```
+## 依赖项
 
-## 示例
-```bash
-# 基本用法
-python src/photowatermark.py /path/to/images
+- Python 3.6+
+- Pillow (图像处理)
+- exifread (EXIF元数据读取)
+- tkinter (GUI框架，Python标准库)
 
-# 自定义水印样式
-python src/photowatermark.py /path/to/images --font-size 32 --font-color red --position center
+## 许可证
 
-# 指定水印位置为左上角
-python src/photowatermark.py /path/to/images --position topLeft
-```
+MIT License
+
+## 作者
+
+[Your Name]
+
+## 贡献
+
+欢迎提交Issue和Pull Request。

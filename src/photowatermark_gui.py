@@ -646,16 +646,152 @@ class PhotoWaterMarkApp:
         pass
 
     def save_template(self):
-        """保存模板"""
-        self.status_label.config(text="保存模板")
+        """保存当前设置为模板"""
+        # 获取模板名称
+        template_name = self.current_template.get()
+        if not template_name or template_name == "默认模板":
+            # 如果没有设置模板名称，提示用户输入
+            from tkinter import simpledialog
+            template_name = simpledialog.askstring("保存模板", "请输入模板名称:")
+            if not template_name:
+                return
+
+        # 收集当前设置
+        settings = {
+            "watermark_text": self.watermark_text.get(),
+            "font_size": self.font_size.get(),
+            "font_color": self.font_color.get(),
+            "transparency": self.transparency.get(),
+            "rotation": self.rotation.get(),
+            "position": self.selected_position.get()
+        }
+
+        # 保存模板
+        self.config_manager.save_template(template_name, settings)
+        self.current_template.set(template_name)
+        self.status_label.config(text=f"模板 '{template_name}' 已保存")
 
     def load_template(self):
         """加载模板"""
-        self.status_label.config(text="加载模板")
+        # 获取所有模板名称
+        templates = self.config_manager.get_templates()
+        if not templates:
+            messagebox.showinfo("提示", "没有可用的模板")
+            return
+
+        # 创建选择对话框
+        from tkinter import simpledialog
+        template_name = simpledialog.askstring("加载模板", "请选择模板名称:", initialvalue=templates[0] if templates else "")
+        if not template_name or template_name not in templates:
+            return
+
+        # 加载模板
+        settings = self.config_manager.load_template(template_name)
+        if settings:
+            self.apply_template_settings(settings)
+            self.current_template.set(template_name)
+            self.status_label.config(text=f"模板 '{template_name}' 已加载")
 
     def manage_templates(self):
         """管理模板"""
-        self.status_label.config(text="管理模板")
+        # 创建模板管理窗口
+        template_window = tk.Toplevel(self.root)
+        template_window.title("模板管理")
+        template_window.geometry("400x300")
+
+        # 模板列表
+        list_frame = ttk.Frame(template_window)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        template_listbox = tk.Listbox(list_frame)
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=template_listbox.yview)
+        template_listbox.configure(yscrollcommand=scrollbar.set)
+
+        template_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 添加模板到列表
+        templates = self.config_manager.get_templates()
+        for template in templates:
+            template_listbox.insert(tk.END, template)
+
+        # 按钮框架
+        button_frame = ttk.Frame(template_window)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        def load_selected_template():
+            selection = template_listbox.curselection()
+            if selection:
+                template_name = template_listbox.get(selection[0])
+                settings = self.config_manager.load_template(template_name)
+                if settings:
+                    self.apply_template_settings(settings)
+                    self.current_template.set(template_name)
+                    self.status_label.config(text=f"模板 '{template_name}' 已加载")
+                    template_window.destroy()
+
+        def delete_selected_template():
+            selection = template_listbox.curselection()
+            if selection:
+                template_name = template_listbox.get(selection[0])
+                if messagebox.askyesno("确认", f"确定要删除模板 '{template_name}' 吗?"):
+                    self.config_manager.delete_template(template_name)
+                    template_listbox.delete(selection[0])
+                    self.status_label.config(text=f"模板 '{template_name}' 已删除")
+
+        def rename_template():
+            selection = template_listbox.curselection()
+            if selection:
+                old_name = template_listbox.get(selection[0])
+                from tkinter import simpledialog
+                new_name = simpledialog.askstring("重命名模板", "请输入新名称:", initialvalue=old_name)
+                if new_name and new_name != old_name:
+                    # 加载旧模板设置
+                    settings = self.config_manager.load_template(old_name)
+                    if settings:
+                        # 保存为新名称
+                        self.config_manager.save_template(new_name, settings)
+                        # 删除旧模板
+                        self.config_manager.delete_template(old_name)
+                        # 更新列表
+                        template_listbox.delete(selection[0])
+                        template_listbox.insert(selection[0], new_name)
+                        self.status_label.config(text=f"模板 '{old_name}' 已重命名为 '{new_name}'")
+
+        # 操作按钮
+        ttk.Button(button_frame, text="加载选中模板", command=load_selected_template).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="删除选中模板", command=delete_selected_template).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="重命名模板", command=rename_template).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="关闭", command=template_window.destroy).pack(side=tk.RIGHT, padx=5)
+
+    def apply_template_settings(self, settings):
+        """应用模板设置"""
+        # 应用水印设置
+        if "watermark_text" in settings:
+            self.watermark_text.set(settings["watermark_text"])
+        if "font_size" in settings:
+            self.font_size.set(settings["font_size"])
+        if "font_color" in settings:
+            self.font_color.set(settings["font_color"])
+        if "transparency" in settings:
+            self.transparency.set(settings["transparency"])
+        if "rotation" in settings:
+            self.rotation.set(settings["rotation"])
+        if "position" in settings:
+            self.selected_position.set(settings["position"])
+
+        # 更新预览
+        self.on_watermark_setting_change(None)
+
+    def load_last_template(self):
+        """加载上次使用的模板"""
+        last_template = self.config_manager.get_last_template()
+        if last_template:
+            settings = self.config_manager.load_template(last_template)
+            if settings:
+                # 应用模板设置
+                self.apply_template_settings(settings)
+                self.current_template.set(last_template)
 
     def export_images(self):
         """导出图片"""
