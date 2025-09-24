@@ -11,6 +11,10 @@ from PIL import Image, ImageTk
 import os
 import sys
 
+# 导入水印处理器和配置管理器
+from watermark_handler import WatermarkHandler
+from config_manager import ConfigManager
+
 class PhotoWaterMarkApp:
     def __init__(self, root):
         self.root = root
@@ -38,6 +42,15 @@ class PhotoWaterMarkApp:
 
         # 当前模板
         self.current_template = tk.StringVar(value="默认模板")
+
+        # 水印处理器
+        self.watermark_handler = WatermarkHandler()
+
+        # 配置管理器
+        self.config_manager = ConfigManager()
+
+        # 加载上次使用的模板
+        self.load_last_template()
 
         self.create_widgets()
         self.setup_layout()
@@ -154,6 +167,11 @@ class PhotoWaterMarkApp:
         self.preview_canvas = tk.Canvas(self.middle_panel, bg="lightgray")
         self.preview_canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
+        # 添加鼠标事件处理
+        self.preview_canvas.bind("<Button-1>", self.on_canvas_click)
+        self.preview_canvas.bind("<B1-Motion>", self.on_canvas_drag)
+        self.preview_canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
+
         # 控制按钮
         control_frame = ttk.Frame(self.middle_panel)
         control_frame.pack(fill=tk.X, padx=5, pady=5)
@@ -191,28 +209,40 @@ class PhotoWaterMarkApp:
         """创建水印设置界面"""
         # 水印文本
         ttk.Label(self.watermark_frame, text="水印文本:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        ttk.Entry(self.watermark_frame, textvariable=self.watermark_text, width=20).grid(row=0, column=1, padx=5, pady=5)
+        watermark_entry = ttk.Entry(self.watermark_frame, textvariable=self.watermark_text, width=20)
+        watermark_entry.grid(row=0, column=1, padx=5, pady=5)
+        watermark_entry.bind('<KeyRelease>', self.on_watermark_setting_change)
 
         # 字体大小
         ttk.Label(self.watermark_frame, text="字体大小:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        ttk.Scale(self.watermark_frame, from_=8, to=72, variable=self.font_size, orient=tk.HORIZONTAL).grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
+        font_size_scale = ttk.Scale(self.watermark_frame, from_=8, to=72, variable=self.font_size, orient=tk.HORIZONTAL)
+        font_size_scale.grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
+        font_size_scale.bind('<ButtonRelease-1>', self.on_watermark_setting_change)
         ttk.Label(self.watermark_frame, textvariable=self.font_size).grid(row=1, column=2, padx=5, pady=5)
 
         # 字体颜色
         ttk.Label(self.watermark_frame, text="字体颜色:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
         color_frame = ttk.Frame(self.watermark_frame)
         color_frame.grid(row=2, column=1, columnspan=2, sticky=tk.EW, padx=5, pady=5)
-        ttk.Entry(color_frame, textvariable=self.font_color, width=10).pack(side=tk.LEFT)
-        ttk.Button(color_frame, text="选择", command=self.choose_color).pack(side=tk.LEFT, padx=5)
+        color_entry = ttk.Entry(color_frame, textvariable=self.font_color, width=10)
+        color_entry.pack(side=tk.LEFT)
+        color_entry.bind('<KeyRelease>', self.on_watermark_setting_change)
+        color_button = ttk.Button(color_frame, text="选择", command=self.choose_color)
+        color_button.pack(side=tk.LEFT, padx=5)
+        color_button.bind('<ButtonRelease-1>', self.on_watermark_setting_change)
 
         # 透明度
         ttk.Label(self.watermark_frame, text="透明度:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
-        ttk.Scale(self.watermark_frame, from_=0, to=100, variable=self.transparency, orient=tk.HORIZONTAL).grid(row=3, column=1, sticky=tk.EW, padx=5, pady=5)
+        transparency_scale = ttk.Scale(self.watermark_frame, from_=0, to=100, variable=self.transparency, orient=tk.HORIZONTAL)
+        transparency_scale.grid(row=3, column=1, sticky=tk.EW, padx=5, pady=5)
+        transparency_scale.bind('<ButtonRelease-1>', self.on_watermark_setting_change)
         ttk.Label(self.watermark_frame, textvariable=self.transparency).grid(row=3, column=2, padx=5, pady=5)
 
         # 旋转角度
         ttk.Label(self.watermark_frame, text="旋转角度:").grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
-        ttk.Scale(self.watermark_frame, from_=-180, to=180, variable=self.rotation, orient=tk.HORIZONTAL).grid(row=4, column=1, sticky=tk.EW, padx=5, pady=5)
+        rotation_scale = ttk.Scale(self.watermark_frame, from_=-180, to=180, variable=self.rotation, orient=tk.HORIZONTAL)
+        rotation_scale.grid(row=4, column=1, sticky=tk.EW, padx=5, pady=5)
+        rotation_scale.bind('<ButtonRelease-1>', self.on_watermark_setting_change)
         ttk.Label(self.watermark_frame, textvariable=self.rotation).grid(row=4, column=2, padx=5, pady=5)
 
     def create_position_settings(self):
@@ -224,10 +254,30 @@ class PhotoWaterMarkApp:
             ("↙", "bottomLeft"), ("↓", "bottom"), ("↘", "bottomRight")
         ]
 
+        # 当前选中的位置
+        self.selected_position = tk.StringVar(value="bottomRight")
+
         for i, (text, pos) in enumerate(positions):
             row, col = divmod(i, 3)
-            btn = ttk.Button(self.position_frame, text=text, width=5, command=lambda p=pos: self.set_watermark_position(p))
+            btn = ttk.Button(self.position_frame, text=text, width=5,
+                           command=lambda p=pos: self.set_watermark_position(p))
             btn.grid(row=row, column=col, padx=2, pady=2)
+
+            # 为按钮添加样式以显示选中状态
+            if pos == self.selected_position.get():
+                btn.configure(style='Selected.TButton')
+
+    def set_watermark_position(self, position):
+        """设置水印位置"""
+        self.selected_position.set(position)
+        self.status_label.config(text=f"水印位置设置为: {position}")
+        self.on_watermark_setting_change(None)
+
+        # 更新按钮样式
+        for widget in self.position_frame.winfo_children():
+            if isinstance(widget, ttk.Button):
+                # 这里可以添加样式更新逻辑
+                pass
 
     def create_export_settings(self):
         """创建导出设置界面"""
@@ -274,6 +324,7 @@ class PhotoWaterMarkApp:
         color = colorchooser.askcolor(title="选择水印颜色")
         if color[1]:
             self.font_color.set(color[1])
+            self.on_watermark_setting_change(None)
 
     def browse_output_directory(self):
         """浏览输出目录"""
@@ -284,6 +335,13 @@ class PhotoWaterMarkApp:
     def set_watermark_position(self, position):
         """设置水印位置"""
         self.status_label.config(text=f"水印位置设置为: {position}")
+        self.on_watermark_setting_change(None)
+
+    def on_watermark_setting_change(self, event):
+        """水印设置改变时的事件处理"""
+        # 如果有选中的图片，重新显示带水印的预览
+        if self.current_image_index >= 0:
+            self.show_image(self.current_image_index)
 
     def create_status_bar(self):
         """创建状态栏"""
@@ -372,10 +430,15 @@ class PhotoWaterMarkApp:
                 # 调整图片大小
                 new_width = int(image.width * scale)
                 new_height = int(image.height * scale)
-                image = image.resize((new_width, new_height), Image.LANCZOS)
+
+                # 添加水印到图片
+                watermarked_image = self.add_watermark_to_preview(image)
+
+                # 调整带水印的图片大小
+                watermarked_image = watermarked_image.resize((new_width, new_height), Image.LANCZOS)
 
                 # 转换为PhotoImage
-                photo = ImageTk.PhotoImage(image)
+                photo = ImageTk.PhotoImage(watermarked_image)
 
                 # 清除画布
                 self.preview_canvas.delete("all")
@@ -393,6 +456,126 @@ class PhotoWaterMarkApp:
 
             except Exception as e:
                 messagebox.showerror("错误", f"无法加载图片: {str(e)}")
+
+    def add_watermark_to_preview(self, image):
+        """为预览图添加水印"""
+        try:
+            # 转换为RGBA模式以支持透明度
+            if image.mode != 'RGBA':
+                image = image.convert('RGBA')
+
+            # 创建一个透明图层用于绘制水印
+            txt_layer = Image.new('RGBA', image.size, (255, 255, 255, 0))
+            draw = ImageDraw.Draw(txt_layer)
+
+            # 获取水印文本
+            watermark_text = self.watermark_text.get()
+
+            # 尝试使用默认字体，如果失败则使用默认字体
+            try:
+                font = ImageFont.truetype("arial.ttf", self.font_size.get())
+            except:
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", self.font_size.get())
+                except:
+                    font = ImageFont.load_default()
+
+            # 获取文本尺寸
+            bbox = draw.textbbox((0, 0), watermark_text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+
+            # 计算水印位置
+            img_width, img_height = image.size
+            margin = 10
+
+            # 检查是否使用手动拖拽位置
+            if hasattr(self, 'selected_position_x') and hasattr(self, 'selected_position_y'):
+                try:
+                    x = int(self.selected_position_x.get())
+                    y = int(self.selected_position_y.get())
+                    # 确保位置在图像范围内
+                    x = max(0, min(x, img_width - text_width))
+                    y = max(0, min(y, img_height - text_height))
+                except:
+                    # 如果转换失败，使用预设位置
+                    position = self.selected_position.get()  # 使用选中的位置
+                    if position == 'topLeft':
+                        x, y = margin, margin
+                    elif position == 'top':
+                        x, y = (img_width - text_width) // 2, margin
+                    elif position == 'topRight':
+                        x, y = img_width - text_width - margin, margin
+                    elif position == 'left':
+                        x, y = margin, (img_height - text_height) // 2
+                    elif position == 'center':
+                        x, y = (img_width - text_width) // 2, (img_height - text_height) // 2
+                    elif position == 'right':
+                        x, y = img_width - text_width - margin, (img_height - text_height) // 2
+                    elif position == 'bottomLeft':
+                        x, y = margin, img_height - text_height - margin
+                    elif position == 'bottom':
+                        x, y = (img_width - text_width) // 2, img_height - text_height - margin
+                    elif position == 'bottomRight':
+                        x, y = img_width - text_width - margin, img_height - text_height - margin
+                    else:
+                        x, y = img_width - text_width - margin, img_height - text_height - margin
+            else:
+                # 使用预设位置
+                position = self.selected_position.get()  # 使用选中的位置
+                if position == 'topLeft':
+                    x, y = margin, margin
+                elif position == 'top':
+                    x, y = (img_width - text_width) // 2, margin
+                elif position == 'topRight':
+                    x, y = img_width - text_width - margin, margin
+                elif position == 'left':
+                    x, y = margin, (img_height - text_height) // 2
+                elif position == 'center':
+                    x, y = (img_width - text_width) // 2, (img_height - text_height) // 2
+                elif position == 'right':
+                    x, y = img_width - text_width - margin, (img_height - text_height) // 2
+                elif position == 'bottomLeft':
+                    x, y = margin, img_height - text_height - margin
+                elif position == 'bottom':
+                    x, y = (img_width - text_width) // 2, img_height - text_height - margin
+                elif position == 'bottomRight':
+                    x, y = img_width - text_width - margin, img_height - text_height - margin
+                else:
+                    x, y = img_width - text_width - margin, img_height - text_height - margin
+
+            # 调整透明度
+            alpha = int(255 * self.transparency.get() / 100)
+
+            # 解析颜色
+            font_color = self.font_color.get()
+            if font_color.startswith('#'):
+                # HEX颜色
+                color = tuple(int(font_color[i:i+2], 16) for i in (1, 3, 5))
+            elif font_color.lower() == 'black':
+                color = (0, 0, 0)
+            elif font_color.lower() == 'white':
+                color = (255, 255, 255)
+            elif font_color.lower() == 'red':
+                color = (255, 0, 0)
+            elif font_color.lower() == 'green':
+                color = (0, 255, 0)
+            elif font_color.lower() == 'blue':
+                color = (0, 0, 255)
+            else:
+                color = (0, 0, 0)  # 默认黑色
+
+            # 绘制水印
+            draw.text((x, y), watermark_text, font=font, fill=(*color, alpha))
+
+            # 合并图像和水印图层
+            watermarked = Image.alpha_composite(image, txt_layer)
+
+            return watermarked
+
+        except Exception as e:
+            print(f"添加水印时出错: {e}")
+            return image
 
     def remove_selected(self):
         """移除选中的图片"""
@@ -427,6 +610,41 @@ class PhotoWaterMarkApp:
         """实际大小"""
         self.status_label.config(text="显示实际大小")
 
+    def on_canvas_click(self, event):
+        """画布点击事件处理"""
+        # 记录点击位置
+        self.drag_start_x = event.x
+        self.drag_start_y = event.y
+
+    def on_canvas_drag(self, event):
+        """画布拖拽事件处理"""
+        # 计算拖拽偏移量
+        dx = event.x - self.drag_start_x
+        dy = event.y - self.drag_start_y
+
+        # 更新拖拽起始位置
+        self.drag_start_x = event.x
+        self.drag_start_y = event.y
+
+        # 更新水印位置
+        current_x = int(self.selected_position_x.get()) if hasattr(self, 'selected_position_x') else 0
+        current_y = int(self.selected_position_y.get()) if hasattr(self, 'selected_position_y') else 0
+
+        # 更新位置变量
+        if not hasattr(self, 'selected_position_x'):
+            self.selected_position_x = tk.StringVar(value=str(current_x))
+            self.selected_position_y = tk.StringVar(value=str(current_y))
+
+        self.selected_position_x.set(str(current_x + dx))
+        self.selected_position_y.set(str(current_y + dy))
+
+        # 更新预览
+        self.on_watermark_setting_change(None)
+
+    def on_canvas_release(self, event):
+        """画布释放事件处理"""
+        pass
+
     def save_template(self):
         """保存模板"""
         self.status_label.config(text="保存模板")
@@ -451,7 +669,77 @@ class PhotoWaterMarkApp:
                 return
             self.output_directory.set(output_dir)
 
+        # 检查是否允许导出到原文件夹
+        if not self.allow_overwrite.get():
+            # 检查输出目录是否与任何输入图片的目录相同
+            input_dirs = set(os.path.dirname(path) for path in self.image_paths)
+            if self.output_directory.get() in input_dirs:
+                messagebox.showwarning("警告", "为防止覆盖原图，默认禁止导出到原文件夹。\n请更改输出文件夹或启用'允许导出到原文件夹'选项。")
+                return
+
+        # 开始导出过程
         self.status_label.config(text="开始导出图片...")
+        self.progress_var.set(0)
+
+        # 创建输出目录（如果不存在）
+        output_dir = self.output_directory.get()
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        # 处理每张图片
+        total_images = len(self.image_paths)
+        for i, input_path in enumerate(self.image_paths):
+            try:
+                # 生成输出文件名
+                filename = os.path.basename(input_path)
+                name, ext = os.path.splitext(filename)
+
+                # 根据命名规则生成新文件名
+                if self.naming_prefix.get() == "prefix":
+                    new_name = f"{self.naming_prefix.get()}_{name}"
+                elif self.naming_prefix.get() == "suffix":
+                    new_name = f"{name}{self.naming_suffix.get()}"
+                else:
+                    new_name = name  # 保留原文件名
+
+                # 根据输出格式设置扩展名
+                output_format = self.output_format.get()
+                if output_format == "JPEG":
+                    output_ext = ".jpg"
+                else:
+                    output_ext = ".png"
+
+                output_filename = new_name + output_ext
+                output_path = os.path.join(output_dir, output_filename)
+
+                # 添加水印并保存
+                success = self.watermark_handler.add_text_watermark(
+                    input_path,
+                    output_path,
+                    self.watermark_text.get(),
+                    self.font_size.get(),
+                    self.font_color.get(),
+                    self.transparency.get(),
+                    self.rotation.get(),
+                    self.selected_position.get()
+                )
+
+                if success:
+                    self.status_label.config(text=f"已处理: {filename}")
+                else:
+                    self.status_label.config(text=f"处理失败: {filename}")
+
+                # 更新进度条
+                progress = (i + 1) / total_images * 100
+                self.progress_var.set(progress)
+                self.root.update_idletasks()
+
+            except Exception as e:
+                messagebox.showerror("错误", f"处理图片 {filename} 时出错: {str(e)}")
+
+        self.status_label.config(text=f"导出完成! 成功处理 {total_images} 张图片")
+        self.progress_var.set(100)
+        messagebox.showinfo("完成", f"导出完成! 成功处理 {total_images} 张图片")
 
     def show_help(self):
         """显示帮助"""
