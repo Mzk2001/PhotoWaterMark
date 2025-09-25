@@ -57,7 +57,7 @@ class PhotoWaterMarkApp:
         self.output_directory = tk.StringVar()
         self.output_format = tk.StringVar(value="JPEG")
         self.naming_rule = tk.StringVar(value="")  # 命名规则选择：""=保留原名, "prefix"=添加前缀, "suffix"=添加后缀
-        self.naming_prefix = tk.StringVar()  # 前缀文本
+        self.naming_prefix = tk.StringVar(value="wm_")  # 前缀文本，默认值为"wm_"
         self.naming_suffix = tk.StringVar(value="_watermarked")  # 后缀文本
         self.allow_overwrite = tk.BooleanVar(value=False)
 
@@ -212,15 +212,6 @@ class PhotoWaterMarkApp:
         self.preview_canvas.bind("<B1-Motion>", self.on_canvas_drag)
         self.preview_canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
 
-        # 控制按钮
-        control_frame = ttk.Frame(self.middle_panel)
-        control_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        ttk.Button(control_frame, text="放大", command=self.zoom_in).pack(side=tk.LEFT, padx=2)
-        ttk.Button(control_frame, text="缩小", command=self.zoom_out).pack(side=tk.LEFT, padx=2)
-        ttk.Button(control_frame, text="适应窗口", command=self.fit_window).pack(side=tk.LEFT, padx=2)
-        ttk.Button(control_frame, text="实际大小", command=self.actual_size).pack(side=tk.LEFT, padx=2)
-
     def create_right_panel(self, parent):
         """创建右侧面板"""
         self.right_panel = ttk.Notebook(parent)
@@ -343,12 +334,16 @@ class PhotoWaterMarkApp:
         if not hasattr(self, 'position_buttons'):
             return
 
-        selected_pos = self.selected_position.get()
-        for pos, btn in self.position_buttons.items():
-            if pos == selected_pos:
-                btn.configure(style='Selected.TButton')
-            else:
-                btn.configure(style='TButton')  # 恢复默认样式
+        try:
+            selected_pos = self.selected_position.get()
+            for pos, btn in self.position_buttons.items():
+                if pos == selected_pos:
+                    # 使用relief属性来显示选中状态
+                    btn.configure(relief=tk.SUNKEN)
+                else:
+                    btn.configure(relief=tk.RAISED)  # 恢复默认样式
+        except Exception as e:
+            print(f"更新位置按钮样式时出错: {e}")
 
     def create_export_settings(self):
         """创建导出设置界面"""
@@ -387,8 +382,22 @@ class PhotoWaterMarkApp:
         button_frame = ttk.Frame(self.template_frame)
         button_frame.grid(row=1, column=0, columnspan=2, pady=10)
         ttk.Button(button_frame, text="保存当前设置为模板", command=self.save_template).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="创建新模板", command=self.create_new_template).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="加载模板", command=self.load_template).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="管理模板", command=self.manage_templates).pack(side=tk.LEFT, padx=5)
+
+    def create_new_template(self):
+        """创建新模板"""
+        # 直接调用保存模板方法，但强制创建新模板
+        # 临时保存当前模板名称
+        current_name = self.current_template.get()
+        # 清空当前模板名称以强制输入新名称
+        self.current_template.set("")
+        # 调用保存模板方法
+        self.save_template()
+        # 恢复当前模板名称（如果保存被取消）
+        if not self.current_template.get():
+            self.current_template.set(current_name)
 
     def choose_color(self):
         """选择颜色"""
@@ -743,22 +752,6 @@ class PhotoWaterMarkApp:
                     self.thumbnails.clear()
                 self.status_label.config(text="已清空所有图片")
 
-    def zoom_in(self):
-        """放大"""
-        self.status_label.config(text="放大预览")
-
-    def zoom_out(self):
-        """缩小"""
-        self.status_label.config(text="缩小预览")
-
-    def fit_window(self):
-        """适应窗口"""
-        self.status_label.config(text="适应窗口大小")
-
-    def actual_size(self):
-        """实际大小"""
-        self.status_label.config(text="显示实际大小")
-
     def on_drop_files(self, event):
         """处理拖拽文件事件"""
         if DND_SUPPORTED:
@@ -822,8 +815,18 @@ class PhotoWaterMarkApp:
         """保存当前设置为模板"""
         # 获取模板名称
         template_name = self.current_template.get()
+
+        # 询问用户是保存为新模板还是覆盖当前模板
+        from tkinter import messagebox
+        if template_name and template_name != "默认模板":
+            # 如果已有模板，询问用户操作
+            result = messagebox.askyesno("保存模板", f"是否要将当前设置保存为新模板？\n\n点击'是'创建新模板，点击'否'覆盖当前模板'{template_name}'。")
+            if result:  # 用户选择创建新模板
+                template_name = None  # 重置模板名称以提示用户输入
+
+        # 如果需要输入模板名称
         if not template_name or template_name == "默认模板":
-            # 如果没有设置模板名称，提示用户输入
+            # 提示用户输入模板名称
             from tkinter import simpledialog
             template_name = simpledialog.askstring("保存模板", "请输入模板名称:")
             if not template_name:
@@ -958,8 +961,11 @@ class PhotoWaterMarkApp:
             self.position_mode = "grid"
 
         # 更新按钮样式（确保按钮已创建）
-        if hasattr(self, 'position_buttons') and self.position_buttons:
-            self.update_position_button_styles()
+        try:
+            if hasattr(self, 'position_buttons') and self.position_buttons:
+                self.update_position_button_styles()
+        except Exception as e:
+            print(f"更新位置按钮样式时出错: {e}")
 
         # 更新预览
         self.on_watermark_setting_change(None)

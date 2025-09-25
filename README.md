@@ -21,7 +21,7 @@
 
 ### 方法1：使用预编译的可执行文件（推荐）
 
-1. 从 [Releases](https://github.com/Mzk2001/PhotoWaterMark/releases) 页面下载最新版本的 `photowatermark_gui.exe`
+1. 在项目目录的 `PhotoWaterMark_Release` 文件夹中找到最新版本的 `PhotoWaterMark.exe`
 2. 双击运行即可使用
 
 ### 方法2：从源码运行
@@ -69,7 +69,7 @@
 2. 选择输出文件夹
 3. 设置导出选项：
    - 输出格式：选择JPEG或PNG
-   - 命名规则：保留原文件名、添加前缀或添加后缀
+   - 命名规则：保留原文件名、添加前缀（默认前缀为"wm_"）或添加后缀（默认后缀为"_watermarked"）
 4. 点击"确定"开始导出
 
 ### 5. 模板管理
