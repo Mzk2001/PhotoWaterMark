@@ -839,7 +839,11 @@ class PhotoWaterMarkApp:
             "font_color": self.font_color.get(),
             "transparency": self.transparency.get(),
             "rotation": self.rotation.get(),
-            "position": self.selected_position.get()
+            "position": self.selected_position.get(),
+            "position_mode": self.position_mode,
+            "manual_x": self.manual_x,
+            "manual_y": self.manual_y,
+            "grid_position": self.grid_position
         }
 
         # 保存模板
@@ -953,12 +957,29 @@ class PhotoWaterMarkApp:
             self.transparency.set(settings["transparency"])
         if "rotation" in settings:
             self.rotation.set(settings["rotation"])
+        # 处理位置相关信息
         if "position" in settings:
             self.selected_position.set(settings["position"])
-            # 同时更新grid_position以确保位置正确应用
-            self.grid_position = settings["position"]
-            # 确保位置模式为网格模式
+
+        # 处理位置模式
+        if "position_mode" in settings:
+            self.position_mode = settings["position_mode"]
+        else:
+            # 兼容旧版本模板，默认为网格模式
             self.position_mode = "grid"
+
+        # 处理手动位置坐标
+        if "manual_x" in settings:
+            self.manual_x = settings["manual_x"]
+        if "manual_y" in settings:
+            self.manual_y = settings["manual_y"]
+
+        # 处理九宫格位置
+        if "grid_position" in settings:
+            self.grid_position = settings["grid_position"]
+        elif "position" in settings:
+            # 兼容旧版本模板
+            self.grid_position = settings["position"]
 
         # 更新按钮样式（确保按钮已创建）
         try:
